@@ -4723,7 +4723,13 @@ class AIAgent:
         # constructs a fresh one — no stale closed transport can be reused.
         # Tests in ``tests/run_agent/test_create_openai_client_reuse.py`` and
         # ``tests/run_agent/test_sequential_chats_live.py`` pin this invariant.
-        if "http_client" not in client_kwargs:
+        # Windows + custom HTTPTransport(socket_options=...) can fail to
+        # connect to ChatGPT Codex backends with WinError 10060 timeouts even
+        # though the SDK's default transport succeeds. Keep the keepalive
+        # transport on POSIX where #10324 was observed, but let Windows use
+        # the SDK-managed default transport. See tests/run_agent/
+        # test_create_openai_client_windows.py.
+        if "http_client" not in client_kwargs and os.name != "nt":
             try:
                 import httpx as _httpx
                 import socket as _socket

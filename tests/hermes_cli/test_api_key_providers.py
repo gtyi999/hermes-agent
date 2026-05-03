@@ -631,6 +631,41 @@ class TestHasAnyProviderConfigured:
         from hermes_cli.main import _has_any_provider_configured
         assert _has_any_provider_configured() is True
 
+    @pytest.mark.parametrize("provider_id", ["openai-codex", "nous"])
+    def test_hermes_oauth_provider_counts_without_model_config(self, monkeypatch, tmp_path, provider_id):
+        """Hermes-managed OAuth creds should bypass the first-run wizard."""
+        from hermes_cli import config as config_module
+        from hermes_cli.auth import PROVIDER_REGISTRY
+
+        hermes_home = tmp_path / ".hermes"
+        hermes_home.mkdir()
+        monkeypatch.setattr(config_module, "get_env_path", lambda: hermes_home / ".env")
+        monkeypatch.setattr(config_module, "get_hermes_home", lambda: hermes_home)
+        monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+        monkeypatch.setattr("hermes_cli.copilot_auth.resolve_copilot_token", lambda: ("", ""))
+
+        _all_vars = {
+            "OPENROUTER_API_KEY",
+            "OPENAI_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_TOKEN",
+            "OPENAI_BASE_URL",
+        }
+        for pconfig in PROVIDER_REGISTRY.values():
+            if pconfig.auth_type == "api_key":
+                _all_vars.update(pconfig.api_key_env_vars)
+        for var in _all_vars:
+            monkeypatch.delenv(var, raising=False)
+
+        def _fake_get_auth_status(target):
+            return {"logged_in": target == provider_id}
+
+        monkeypatch.setattr("hermes_cli.auth.get_auth_status", _fake_get_auth_status)
+
+        from hermes_cli.main import _has_any_provider_configured
+
+        assert _has_any_provider_configured() is True
+
     def test_claude_code_creds_ignored_on_fresh_install(self, monkeypatch, tmp_path):
         """Claude Code credentials should NOT skip the wizard when Hermes is unconfigured."""
         from hermes_cli import config as config_module

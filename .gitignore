@@ -3,6 +3,7 @@
 *.pyc*
 __pycache__/
 .venv/
+.venv-wsl/
 .vscode/
 .env
 .env.local

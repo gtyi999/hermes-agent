@@ -259,10 +259,16 @@ def _has_any_provider_configured() -> bool:
         except Exception:
             pass
 
-    # Check provider-specific auth fallbacks (for example, Copilot via gh auth).
+    # Check Hermes-managed provider auth fallbacks. This covers providers whose
+    # credentials may live outside config.yaml/.env (for example `hermes auth`
+    # storing Codex or Nous OAuth state in the credential pool/auth store).
+    #
+    # Keep external tool credentials out of this path: unrelated installs like
+    # Claude Code should not silently suppress the first-run setup wizard on a
+    # fresh Hermes install.
     try:
         for provider_id, pconfig in PROVIDER_REGISTRY.items():
-            if pconfig.auth_type != "api_key":
+            if pconfig.auth_type not in {"api_key", "oauth_device_code", "oauth_external"}:
                 continue
             status = get_auth_status(provider_id)
             if status.get("logged_in"):

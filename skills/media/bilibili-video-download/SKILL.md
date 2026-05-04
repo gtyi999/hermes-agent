@@ -1,9 +1,11 @@
 ---
 name: bilibili-video-download
 description: >
-  Download Bilibili videos from bilibili.com or b23.tv links when the user asks
-  to save an authorized B站/Bilibili video locally. Use for Bilibili video URLs,
-  BV/av links, bangumi episode links, or shortened b23.tv links.
+  Download Bilibili video/audio media from bilibili.com or b23.tv links when
+  the user asks to save an authorized B站/Bilibili video locally. Use for
+  video media downloads from Bilibili URLs, BV/av links, bangumi episode links,
+  or shortened b23.tv links; use the Bilibili subtitle skill for subtitles-only
+  requests.
 ---
 
 # Bilibili Video Download

@@ -119,10 +119,12 @@ Skills for working with MCP (Model Context Protocol) servers, tools, and integra
 
 ## media
 
-Skills for working with media content — YouTube transcripts, GIF search, music generation, and audio visualization.
+Skills for working with media content — YouTube transcripts, Bilibili video and subtitle downloads, GIF search, music generation, and audio visualization.
 
 | Skill | Description | Path |
 |-------|-------------|------|
+| `bilibili-subtitle-download` | Download subtitles, captions, or transcript files from Bilibili/B站 videos without downloading video/audio media. Supports bilibili.com, b23.tv, BV/av IDs, and bangumi ep/ss links. | `media/bilibili-subtitle-download` |
+| `bilibili-video-download` | Download Bilibili video/audio media from bilibili.com or b23.tv links when the user asks to save an authorized B站/Bilibili video locally. Use the Bilibili subtitle skill for subtitles-only requests. | `media/bilibili-video-download` |
 | `gif-search` | Search and download GIFs from Tenor using curl. No dependencies beyond curl and jq. Useful for finding reaction GIFs, creating visual content, and sending GIFs in chat. | `media/gif-search` |
 | `heartmula` | Set up and run HeartMuLa, the open-source music generation model family (Suno-like). Generates full songs from lyrics + tags with multilingual support. | `media/heartmula` |
 | `songsee` | Generate spectrograms and audio feature visualizations (mel, chroma, MFCC, tempogram, etc.) from audio files via CLI. Useful for audio analysis, music production debugging, and visual documentation. | `media/songsee` |

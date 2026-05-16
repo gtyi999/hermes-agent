@@ -21,7 +21,9 @@ from urllib.parse import urlparse
 
 DEFAULT_OUTPUT_DIR = Path("downloads") / "bilibili"
 DEFAULT_TEMPLATE = "%(title).200B [%(id)s].%(ext)s"
-DEFAULT_FORMAT = "bv*+ba/b"
+DEFAULT_FORMAT = "b[acodec!=none][vcodec!=none]/best[acodec!=none][vcodec!=none]"
+BEST_QUALITY_FORMAT = "bv*[vcodec!=none]+ba[acodec!=none]/bv*+ba/b[acodec!=none][vcodec!=none]"
+AUDIO_ONLY_FORMAT = "ba[acodec!=none]/bestaudio/b"
 ALLOWED_HOSTS = ("bilibili.com", "b23.tv", "acg.tv")
 BVID_RE = re.compile(r"^BV[0-9A-Za-z]{10}$", re.IGNORECASE)
 AVID_RE = re.compile(r"^av(\d+)$", re.IGNORECASE)
@@ -36,6 +38,22 @@ def _yt_dlp_command() -> list[str] | None:
     if exe:
         return [exe]
     return None
+
+
+def _ffmpeg_command() -> str | None:
+    return shutil.which("ffmpeg")
+
+
+def _require_ffmpeg(reason: str) -> None:
+    if _ffmpeg_command() is None:
+        raise RuntimeError(
+            f"{reason}. ffmpeg is not installed or not on PATH. "
+            "Install ffmpeg, then retry."
+        )
+
+
+def _format_needs_merge(format_selector: str) -> bool:
+    return "+" in format_selector
 
 
 def _is_allowed_host(host: str) -> bool:
@@ -101,8 +119,16 @@ def _build_command(args: argparse.Namespace) -> list[str]:
 
     url = _normalize_bilibili_input(args.url)
     selected_format = args.format
+    if args.best_quality and args.format == DEFAULT_FORMAT:
+        selected_format = BEST_QUALITY_FORMAT
     if args.audio_only and args.format == DEFAULT_FORMAT:
-        selected_format = "ba/b"
+        selected_format = AUDIO_ONLY_FORMAT
+
+    if not getattr(args, "list_formats", False):
+        if args.audio_only:
+            _require_ffmpeg("Audio extraction/conversion requires ffmpeg")
+        elif _format_needs_merge(selected_format):
+            _require_ffmpeg("Best-quality video/audio merging requires ffmpeg")
 
     cmd = [
         *prefix,
@@ -124,7 +150,7 @@ def _build_command(args: argparse.Namespace) -> list[str]:
         "https://www.bilibili.com/",
     ]
 
-    if not args.audio_only:
+    if not args.audio_only and _format_needs_merge(selected_format):
         cmd.extend(["--merge-output-format", args.merge_format])
     if args.cookies:
         cookies_path = Path(args.cookies).expanduser()
@@ -198,7 +224,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--merge-format",
         default="mp4",
-        help="Container used after merging",
+        help="Container used after merging with --best-quality",
     )
     parser.add_argument("--cookies", help="Path to a Netscape-format cookies.txt file")
     parser.add_argument(
@@ -220,6 +246,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--info-json",
         action="store_true",
         help="Write yt-dlp metadata JSON",
+    )
+    parser.add_argument(
+        "--best-quality",
+        action="store_true",
+        help="Download separate best video/audio streams and merge with ffmpeg",
     )
     parser.add_argument(
         "--playlist",

@@ -21,7 +21,12 @@ from urllib.parse import parse_qs, urlparse, urlunparse
 
 DEFAULT_OUTPUT_DIR = Path("downloads") / "youtube"
 DEFAULT_TEMPLATE = "%(title).200B [%(id)s].%(ext)s"
-DEFAULT_FORMAT = "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b"
+DEFAULT_FORMAT = "b[ext=mp4][acodec!=none][vcodec!=none]/b[acodec!=none][vcodec!=none]"
+BEST_QUALITY_FORMAT = (
+    "bv*[ext=mp4]+ba[ext=m4a]/bv*[vcodec!=none]+ba[acodec!=none]/"
+    "b[acodec!=none][vcodec!=none]"
+)
+AUDIO_ONLY_FORMAT = "ba[acodec!=none]/bestaudio/b"
 DEFAULT_SUB_LANGS = "en.*,zh-Hans,zh-Hant,zh-CN,zh-TW"
 ALLOWED_HOSTS = ("youtube.com", "youtube-nocookie.com", "youtu.be")
 VIDEO_ID_RE = re.compile(r"^[0-9A-Za-z_-]{11}$")
@@ -35,6 +40,22 @@ def _yt_dlp_command() -> list[str] | None:
     if exe:
         return [exe]
     return None
+
+
+def _ffmpeg_command() -> str | None:
+    return shutil.which("ffmpeg")
+
+
+def _require_ffmpeg(reason: str) -> None:
+    if _ffmpeg_command() is None:
+        raise RuntimeError(
+            f"{reason}. ffmpeg is not installed or not on PATH. "
+            "Install ffmpeg, then retry."
+        )
+
+
+def _format_needs_merge(format_selector: str) -> bool:
+    return "+" in format_selector
 
 
 def _is_allowed_host(host: str) -> bool:
@@ -141,8 +162,16 @@ def _build_command(args: argparse.Namespace) -> list[str]:
         output_dir.mkdir(parents=True, exist_ok=True)
 
     selected_format = args.format
+    if args.best_quality and args.format == DEFAULT_FORMAT:
+        selected_format = BEST_QUALITY_FORMAT
     if args.audio_only and args.format == DEFAULT_FORMAT:
-        selected_format = "ba/b"
+        selected_format = AUDIO_ONLY_FORMAT
+
+    if not args.list_formats:
+        if args.audio_only:
+            _require_ffmpeg("Audio extraction/conversion requires ffmpeg")
+        elif _format_needs_merge(selected_format):
+            _require_ffmpeg("Best-quality video/audio merging requires ffmpeg")
 
     cmd = [
         *prefix,
@@ -169,7 +198,7 @@ def _build_command(args: argparse.Namespace) -> list[str]:
             "--concurrent-fragments",
             str(args.concurrent_fragments),
         ])
-        if not args.audio_only:
+        if not args.audio_only and _format_needs_merge(selected_format):
             cmd.extend(["--merge-output-format", args.merge_format])
         if args.subtitles:
             cmd.extend([
@@ -236,7 +265,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--merge-format",
         default="mp4",
-        help="Container used after merging",
+        help="Container used after merging with --best-quality",
     )
     parser.add_argument("--cookies", help="Path to a Netscape-format cookies.txt file")
     parser.add_argument(
@@ -263,6 +292,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--write-description",
         action="store_true",
         help="Write the YouTube description text",
+    )
+    parser.add_argument(
+        "--best-quality",
+        action="store_true",
+        help="Download separate best video/audio streams and merge with ffmpeg",
     )
     parser.add_argument(
         "--playlist",

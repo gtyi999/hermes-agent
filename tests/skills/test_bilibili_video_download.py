@@ -72,8 +72,57 @@ def test_build_command_uses_normalized_url_and_skips_dry_run_directory_creation(
 
     assert cmd[-1] == "https://www.bilibili.com/video/BV1xx411c7mD"
     assert "--no-playlist" in cmd
-    assert "--merge-output-format" in cmd
+    assert "--merge-output-format" not in cmd
+    assert "-f" in cmd
+    assert "[acodec!=none]" in cmd[cmd.index("-f") + 1]
+    assert "[vcodec!=none]" in cmd[cmd.index("-f") + 1]
     assert not output_dir.exists()
+
+
+def test_best_quality_uses_split_streams_and_requires_merge(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    mod = load_module()
+    monkeypatch.setattr(mod, "_yt_dlp_command", lambda: ["/usr/bin/yt-dlp"])
+    monkeypatch.setattr(mod, "_ffmpeg_command", lambda: "/usr/bin/ffmpeg")
+
+    args = mod.parse_args(
+        [
+            "https://www.bilibili.com/video/BV1xx411c7mD",
+            "--output-dir",
+            str(tmp_path),
+            "--best-quality",
+            "--dry-run",
+        ]
+    )
+    cmd = mod._build_command(args)
+
+    assert "-f" in cmd
+    assert "+" in cmd[cmd.index("-f") + 1]
+    assert "--merge-output-format" in cmd
+
+
+def test_best_quality_missing_ffmpeg_fails_before_running_yt_dlp(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    mod = load_module()
+    monkeypatch.setattr(mod, "_yt_dlp_command", lambda: ["/usr/bin/yt-dlp"])
+    monkeypatch.setattr(mod, "_ffmpeg_command", lambda: None)
+
+    args = mod.parse_args(
+        [
+            "https://www.bilibili.com/video/BV1xx411c7mD",
+            "--output-dir",
+            str(tmp_path),
+            "--best-quality",
+            "--dry-run",
+        ]
+    )
+
+    with pytest.raises(RuntimeError, match="ffmpeg"):
+        mod._build_command(args)
 
 
 def test_audio_only_uses_audio_format_without_merge_output(
@@ -82,6 +131,7 @@ def test_audio_only_uses_audio_format_without_merge_output(
 ):
     mod = load_module()
     monkeypatch.setattr(mod, "_yt_dlp_command", lambda: ["/usr/bin/yt-dlp"])
+    monkeypatch.setattr(mod, "_ffmpeg_command", lambda: "/usr/bin/ffmpeg")
 
     args = mod.parse_args(
         [
@@ -95,7 +145,7 @@ def test_audio_only_uses_audio_format_without_merge_output(
     cmd = mod._build_command(args)
 
     assert "-f" in cmd
-    assert cmd[cmd.index("-f") + 1] == "ba/b"
+    assert cmd[cmd.index("-f") + 1] == mod.AUDIO_ONLY_FORMAT
     assert "--merge-output-format" not in cmd
     assert "-x" in cmd
 

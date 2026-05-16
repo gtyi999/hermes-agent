@@ -10,8 +10,9 @@ description: >
 
 # Bilibili Video Download
 
-Download Bilibili videos with `yt-dlp`, preserving title metadata and merging
-video/audio with `ffmpeg` when needed.
+Download Bilibili videos with `yt-dlp`, preserving title metadata. The default
+mode prefers a single file that already contains both video and audio so the
+result plays with sound even when `ffmpeg` is not installed.
 
 ## Boundaries
 
@@ -25,11 +26,11 @@ access; never ask for passwords.
 ```bash
 source venv/bin/activate  # if working inside the Hermes repo
 python -m pip install -U yt-dlp
-ffmpeg -version
+ffmpeg -version  # required for --best-quality or --audio-only
 ```
 
-`ffmpeg` is needed for Bilibili DASH streams because video and audio are often
-downloaded separately and merged.
+`ffmpeg` is needed only when using `--best-quality` to merge separate
+video/audio streams, or when extracting/converting audio with `--audio-only`.
 
 ## Helper Script
 
@@ -38,6 +39,9 @@ downloaded separately and merged.
 ```bash
 # Basic download into ./downloads/bilibili
 python3 SKILL_DIR/scripts/download_bilibili.py "https://www.bilibili.com/video/BV..."
+
+# Highest quality download; requires ffmpeg for audio/video merging
+python3 SKILL_DIR/scripts/download_bilibili.py "URL" --best-quality
 
 # Authenticated download with an exported Netscape cookie file
 python3 SKILL_DIR/scripts/download_bilibili.py "URL" --cookies /path/to/cookies.txt
@@ -62,9 +66,12 @@ and bangumi `ep...`/`ss...` IDs.
 2. Use `--dry-run` if the request is ambiguous or needs review.
 3. Run the helper script. Prefer `--cookies` or `--cookies-from-browser` only
    when the video requires authentication or better quality requires login.
-4. If `yt-dlp` is missing, install it in the active environment and retry.
-5. If merging fails, install or locate `ffmpeg`, then retry.
-6. Report the output directory (`./downloads/bilibili` by default) and any
+4. Add `--best-quality` only when the user prioritizes maximum quality over
+   no-setup playback, and confirm `ffmpeg` is installed.
+5. If `yt-dlp` is missing, install it in the active environment and retry.
+6. If merging fails, install or locate `ffmpeg`, then retry with
+   `--best-quality`.
+7. Report the output directory (`./downloads/bilibili` by default) and any
    important limitation, such as login required, region restriction,
    unavailable video, or permission denied.
 
@@ -72,8 +79,11 @@ and bangumi `ep...`/`ss...` IDs.
 
 - **Login required or low quality only**: retry with `--cookies` or
   `--cookies-from-browser`.
-- **`ffmpeg` missing**: install `ffmpeg`; without it, DASH video/audio merge
-  may fail.
+- **Downloaded file has no sound**: rerun with the default format, not a custom
+  `bestvideo`/video-only selector. For maximum quality, install `ffmpeg` and use
+  `--best-quality` so separate audio and video streams are merged.
+- **`ffmpeg` missing**: default video downloads still work, but
+  `--best-quality` and `--audio-only` require `ffmpeg`.
 - **b23.tv redirect fails**: open the short link in a browser and retry with
   the expanded `bilibili.com` URL.
 - **Region/private/member-only restriction**: do not bypass access controls;

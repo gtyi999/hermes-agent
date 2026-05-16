@@ -1,0 +1,4 @@
+interface:
+  display_name: "A-share Solid Battery Limit-ups"
+  short_description: "Daily solid-battery limit-up digest."
+  default_prompt: "Set up a daily 00:20 Feishu report for A-share solid-state battery limit-up stocks."

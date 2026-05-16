@@ -1,0 +1,4 @@
+interface:
+  display_name: "AI News Daily Feishu"
+  short_description: "Schedule a daily AI news digest to Feishu."
+  default_prompt: "Set up a daily 00:00 AI news digest and send it to Feishu."

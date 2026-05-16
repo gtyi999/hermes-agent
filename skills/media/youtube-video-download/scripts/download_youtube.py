@@ -30,6 +30,7 @@ AUDIO_ONLY_FORMAT = "ba[acodec!=none]/bestaudio/b"
 DEFAULT_SUB_LANGS = "en.*,zh-Hans,zh-Hant,zh-CN,zh-TW"
 ALLOWED_HOSTS = ("youtube.com", "youtube-nocookie.com", "youtu.be")
 VIDEO_ID_RE = re.compile(r"^[0-9A-Za-z_-]{11}$")
+JS_RUNTIME_CANDIDATES = (("deno", "deno"), ("node", "node"), ("bun", "bun"))
 
 
 def _yt_dlp_command() -> list[str] | None:
@@ -44,6 +45,27 @@ def _yt_dlp_command() -> list[str] | None:
 
 def _ffmpeg_command() -> str | None:
     return shutil.which("ffmpeg")
+
+
+def _available_js_runtimes() -> list[str]:
+    runtimes: list[str] = []
+    for runtime_name, executable in JS_RUNTIME_CANDIDATES:
+        path = shutil.which(executable)
+        if path:
+            runtimes.append(f"{runtime_name}:{path}")
+    return runtimes
+
+
+def _resolve_js_runtimes_arg(value: str | None) -> str | None:
+    if not value or value == "none":
+        return None
+    if value != "auto":
+        return value
+
+    runtimes = _available_js_runtimes()
+    if not runtimes:
+        return None
+    return ",".join(runtimes)
 
 
 def _require_ffmpeg(reason: str) -> None:
@@ -181,6 +203,10 @@ def _build_command(args: argparse.Namespace) -> list[str]:
 
     _add_auth_args(cmd, args)
 
+    js_runtimes = _resolve_js_runtimes_arg(args.js_runtimes)
+    if js_runtimes:
+        cmd.extend(["--js-runtimes", js_runtimes])
+
     if args.list_formats:
         cmd.append("--list-formats")
     else:
@@ -307,6 +333,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--list-formats",
         action="store_true",
         help="List available formats without downloading",
+    )
+    parser.add_argument(
+        "--js-runtimes",
+        default="auto",
+        help=(
+            "JavaScript runtimes passed to yt-dlp for YouTube challenges. "
+            "Default: auto-detect deno, node, or bun; use 'none' to disable."
+        ),
     )
     parser.add_argument("--proxy", help="Proxy URL passed to yt-dlp")
     parser.add_argument("--rate-limit", help="Rate limit, e.g. 2M")

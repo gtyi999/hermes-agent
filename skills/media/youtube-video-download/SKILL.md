@@ -28,11 +28,15 @@ browser-cookie access; never ask for passwords.
 ```bash
 source venv/bin/activate  # if working inside the Hermes repo
 python -m pip install -U yt-dlp
+node --version    # recommended; helper auto-enables node for YouTube JS challenges
 ffmpeg -version  # required for --best-quality or --audio-only
 ```
 
 `ffmpeg` is needed only when using `--best-quality` to merge separate
 video/audio streams, or when extracting/converting audio with `--audio-only`.
+YouTube sometimes requires `yt-dlp` to solve JavaScript challenges before
+formats are available; the helper automatically passes installed runtimes such
+as `deno`, `node`, or `bun` via `--js-runtimes`.
 
 ## Helper Script
 
@@ -56,6 +60,9 @@ python3 SKILL_DIR/scripts/download_youtube.py "URL" --audio-only --audio-format 
 
 # Include subtitles and thumbnail
 python3 SKILL_DIR/scripts/download_youtube.py "URL" --subtitles --thumbnail
+
+# Override JavaScript challenge runtime selection
+python3 SKILL_DIR/scripts/download_youtube.py "URL" --js-runtimes node:/usr/bin/node
 
 # Preview the exact yt-dlp command without downloading
 python3 SKILL_DIR/scripts/download_youtube.py "URL" --dry-run
@@ -96,6 +103,13 @@ to download a playlist.
   `--best-quality` so separate audio and video streams are merged.
 - **Login, age, or membership required**: retry with `--cookies` or
   `--cookies-from-browser` only if the user has authorized access.
+- **`Sign in to confirm you're not a bot`**: first ensure the helper command
+  includes `--js-runtimes` with an installed runtime such as `node`. If the
+  error remains, retry with `--cookies` or `--cookies-from-browser` only when
+  the user has authorized access.
+- **No supported JavaScript runtime**: install `node`, `deno`, or `bun`, then
+  rerun. If a runtime is installed in a non-standard location, pass it with
+  `--js-runtimes runtime:/path/to/executable`.
 - **`ffmpeg` missing**: default video downloads still work, but
   `--best-quality` and `--audio-only` require `ffmpeg`.
 - **Format unavailable**: run `--list-formats`, then retry with an explicit

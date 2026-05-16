@@ -156,6 +156,87 @@ def test_playlist_flag_allows_playlist_downloads(
     assert "--yes-playlist" in cmd
 
 
+def test_auto_js_runtime_uses_available_runtime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    mod = load_module()
+    monkeypatch.setattr(mod, "_yt_dlp_command", lambda: ["/usr/bin/yt-dlp"])
+    monkeypatch.setattr(
+        mod,
+        "_available_js_runtimes",
+        lambda: ["node:/usr/bin/node"],
+    )
+
+    args = mod.parse_args(
+        [
+            "https://www.youtube.com/watch?v=Ee-7aHmfhAk",
+            "--output-dir",
+            str(tmp_path),
+            "--dry-run",
+        ]
+    )
+    cmd = mod._build_command(args)
+
+    assert "--js-runtimes" in cmd
+    assert cmd[cmd.index("--js-runtimes") + 1] == "node:/usr/bin/node"
+
+
+def test_js_runtime_can_be_disabled(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    mod = load_module()
+    monkeypatch.setattr(mod, "_yt_dlp_command", lambda: ["/usr/bin/yt-dlp"])
+    monkeypatch.setattr(
+        mod,
+        "_available_js_runtimes",
+        lambda: ["node:/usr/bin/node"],
+    )
+
+    args = mod.parse_args(
+        [
+            "https://www.youtube.com/watch?v=Ee-7aHmfhAk",
+            "--output-dir",
+            str(tmp_path),
+            "--js-runtimes",
+            "none",
+            "--dry-run",
+        ]
+    )
+    cmd = mod._build_command(args)
+
+    assert "--js-runtimes" not in cmd
+
+
+def test_explicit_js_runtime_passthrough(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    mod = load_module()
+    monkeypatch.setattr(mod, "_yt_dlp_command", lambda: ["/usr/bin/yt-dlp"])
+    monkeypatch.setattr(
+        mod,
+        "_available_js_runtimes",
+        lambda: ["node:/usr/bin/node"],
+    )
+
+    args = mod.parse_args(
+        [
+            "https://www.youtube.com/watch?v=Ee-7aHmfhAk",
+            "--output-dir",
+            str(tmp_path),
+            "--js-runtimes",
+            "deno:/opt/deno",
+            "--dry-run",
+        ]
+    )
+    cmd = mod._build_command(args)
+
+    assert "--js-runtimes" in cmd
+    assert cmd[cmd.index("--js-runtimes") + 1] == "deno:/opt/deno"
+
+
 def test_audio_only_uses_audio_format_without_merge_output(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

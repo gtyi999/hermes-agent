@@ -129,6 +129,7 @@ Skills for working with media content — YouTube transcripts, Bilibili video an
 | `heartmula` | Set up and run HeartMuLa, the open-source music generation model family (Suno-like). Generates full songs from lyrics + tags with multilingual support. | `media/heartmula` |
 | `songsee` | Generate spectrograms and audio feature visualizations (mel, chroma, MFCC, tempogram, etc.) from audio files via CLI. Useful for audio analysis, music production debugging, and visual documentation. | `media/songsee` |
 | `youtube-content` | Fetch YouTube video transcripts and transform them into structured content (chapters, summaries, threads, blog posts). Use when the user shares a YouTube URL or video link, asks to summarize a video, requests a transcript, or wants to extract and reformat content from any YouT… | `media/youtube-content` |
+| `youtube-video-download` | Download YouTube video or audio media from youtube.com, music.youtube.com, youtube-nocookie.com, or youtu.be links when the user asks to save an authorized YouTube video locally. | `media/youtube-video-download` |
 
 ## mlops
 

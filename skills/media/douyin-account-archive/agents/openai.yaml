@@ -1,0 +1,4 @@
+interface:
+  display_name: "Douyin Account Archive"
+  short_description: "Archive authorized Douyin account videos."
+  default_prompt: "Use $douyin-account-archive to archive this authorized Douyin account."

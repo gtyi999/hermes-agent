@@ -1,0 +1,4 @@
+interface:
+  display_name: "GitHub Daily Stars"
+  short_description: "Daily GitHub star growth digest."
+  default_prompt: "Use $github-daily-stars-feishu to set up a daily 22:00 Feishu digest for yesterday's top GitHub star gains."

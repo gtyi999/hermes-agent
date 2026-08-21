@@ -38,10 +38,11 @@ def test_browser_vision_does_not_share_blank_screenshot(monkeypatch, tmp_path):
 
     monkeypatch.setattr(hermes_constants, "get_hermes_dir", lambda *args: tmp_path)
     monkeypatch.setattr(browser_tool, "_cleanup_old_screenshots", lambda *args, **kwargs: None)
+    monkeypatch.setattr(browser_tool, "_is_local_backend", lambda: True)
     call_llm = MagicMock()
-    monkeypatch.setattr(browser_tool, "call_llm", call_llm)
+    monkeypatch.setattr(browser_tool, "_lazy_call_llm", call_llm)
 
-    def fake_run_browser_command(task_id, command, args, timeout=None):
+    def fake_run_browser_command(task_id, command, args, timeout=None, **kwargs):
         assert command == "screenshot"
         screenshot_path = Path(args[-1])
         PIL_Image.new("RGB", (1280, 720), (255, 255, 255)).save(screenshot_path)

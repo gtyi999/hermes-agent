@@ -1,0 +1,4 @@
+interface:
+  display_name: "A-share Optical PCB Leaders"
+  short_description: "Daily optical-module and PCB leader stock quote digest."
+  default_prompt: "Set up a daily 21:50 Feishu report for five A-share optical-module and PCB concept leader stocks."

@@ -9,6 +9,7 @@ from hermes_cli.model_normalize import (
     normalize_model_for_provider,
     _DOT_TO_HYPHEN_PROVIDERS,
     _AGGREGATOR_PROVIDERS,
+    _normalize_for_deepseek,
     detect_vendor,
 )
 
@@ -191,3 +192,27 @@ class TestDetectVendor:
     ])
     def test_detects_known_vendors(self, model, expected):
         assert detect_vendor(model) == expected
+
+
+class TestDeepseekVSeriesPassThrough:
+    @pytest.mark.parametrize("model", [
+        "deepseek-v4-pro",
+        "deepseek-v4-flash",
+        "deepseek/deepseek-v4-pro",
+        "DeepSeek-V4-Flash",
+        "deepseek-v4-flash-20260423",
+        "deepseek-v5-pro",
+    ])
+    def test_v_series_passes_through(self, model):
+        expected = model.split("/", 1)[-1].lower()
+        assert _normalize_for_deepseek(model) == expected
+
+    def test_provider_preserves_v4_models(self):
+        assert (
+            normalize_model_for_provider("deepseek-v4-pro", "deepseek")
+            == "deepseek-v4-pro"
+        )
+        assert (
+            normalize_model_for_provider("deepseek-v4-flash", "deepseek")
+            == "deepseek-v4-flash"
+        )

@@ -99,6 +99,41 @@ class TestApiServerAdapterToolset:
             assert call_kwargs.kwargs.get("platform") == "api_server"
 
     @patch("gateway.platforms.api_server.AIOHTTP_AVAILABLE", True)
+    def test_create_agent_respects_per_run_model_and_provider(self):
+        """Structured runs can select a saved provider without changing global config."""
+        from gateway.platforms.api_server import APIServerAdapter
+        from gateway.config import PlatformConfig
+
+        adapter = APIServerAdapter(PlatformConfig())
+
+        with patch("gateway.run._resolve_runtime_agent_kwargs") as mock_kwargs, \
+             patch("gateway.run._resolve_gateway_model") as mock_model, \
+             patch("gateway.run._load_gateway_config", return_value={}), \
+             patch("run_agent.AIAgent") as mock_agent_cls:
+
+            mock_kwargs.return_value = {
+                "api_key": "test-key",
+                "base_url": "https://example.invalid/v1",
+                "provider": "custom",
+                "api_mode": "chat_completions",
+                "command": None,
+                "args": [],
+            }
+            mock_model.return_value = "global-model"
+            mock_agent_cls.return_value = MagicMock()
+
+            adapter._create_agent(
+                model_override="glm-4.5-air",
+                provider_override="custom:coze-glm-4-5-air",
+            )
+
+            mock_kwargs.assert_called_once_with(
+                requested_provider="custom:coze-glm-4-5-air",
+            )
+            assert mock_agent_cls.call_args.kwargs["model"] == "glm-4.5-air"
+            assert mock_agent_cls.call_args.kwargs["provider"] == "custom"
+
+    @patch("gateway.platforms.api_server.AIOHTTP_AVAILABLE", True)
     def test_create_agent_respects_config_override(self):
         """User can override API server toolsets via platform_toolsets in config.yaml."""
         from gateway.platforms.api_server import APIServerAdapter

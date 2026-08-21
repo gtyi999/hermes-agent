@@ -2040,17 +2040,19 @@ def browser_vision(question: str, annotate: bool = False, task_id: Optional[str]
         # Prune old screenshots (older than 24 hours) to prevent unbounded disk growth
         _cleanup_old_screenshots(screenshots_dir, max_age_hours=24)
         
-        # Take screenshot using agent-browser
-        screenshot_args = []
-        if annotate:
-            screenshot_args.append("--annotate")
-        screenshot_args.append("--full")
-        screenshot_args.append(str(screenshot_path))
-        result = _run_browser_command(
-            effective_task_id, 
-            "screenshot", 
-            screenshot_args,
-        )
+        def _take_screenshot_once() -> Dict[str, Any]:
+            screenshot_args = []
+            if annotate:
+                screenshot_args.append("--annotate")
+            screenshot_args.append("--full")
+            screenshot_args.append(str(screenshot_path))
+            return _run_browser_command(
+                effective_task_id,
+                "screenshot",
+                screenshot_args,
+            )
+
+        result = _take_screenshot_once()
         
         if not result.get("success"):
             error_detail = result.get("error", "Unknown error")
@@ -2077,6 +2079,36 @@ def browser_vision(question: str, annotate: bool = False, task_id: Optional[str]
                     f"a missing Chromium install ('agent-browser install'), "
                     f"or a stale daemon process."
                 ),
+            }, ensure_ascii=False)
+
+        if _is_blank_browser_screenshot(screenshot_path):
+            logger.warning("browser_vision captured a blank screenshot; retrying once: %s", screenshot_path)
+            time.sleep(1)
+            result = _take_screenshot_once()
+            if not result.get("success"):
+                error_detail = result.get("error", "Unknown error")
+                return json.dumps({
+                    "success": False,
+                    "error": f"Failed to retake blank screenshot: {error_detail}",
+                    "screenshot_blank": True,
+                }, ensure_ascii=False)
+            actual_screenshot_path = result.get("data", {}).get("path")
+            if actual_screenshot_path:
+                screenshot_path = Path(actual_screenshot_path)
+
+        if _is_blank_browser_screenshot(screenshot_path):
+            try:
+                screenshot_path.unlink()
+            except OSError:
+                pass
+            return json.dumps({
+                "success": False,
+                "error": (
+                    "Screenshot capture returned a blank image, so no image was sent. "
+                    "The browser session is likely still on a blank page or the page did not finish rendering. "
+                    "Navigate to the target URL first, then retry the screenshot."
+                ),
+                "screenshot_blank": True,
             }, ensure_ascii=False)
         
         # Convert screenshot to base64 at full resolution.
@@ -2175,6 +2207,134 @@ def browser_vision(question: str, annotate: bool = False, task_id: Optional[str]
             error_info["screenshot_path"] = str(screenshot_path)
             error_info["note"] = "Screenshot was captured but vision analysis failed. You can still share it via MEDIA:<path>."
         return json.dumps(error_info, ensure_ascii=False)
+
+
+def _is_blank_browser_screenshot(screenshot_path, tolerance=2) -> bool:
+    """Return True when a screenshot is effectively a single-color blank frame."""
+    try:
+        from PIL import Image, ImageStat
+
+        with Image.open(screenshot_path) as image:
+            if image.width <= 0 or image.height <= 0:
+                return True
+            rgb = image.convert("RGB")
+            extrema = ImageStat.Stat(rgb).extrema
+            if all(high - low <= tolerance for low, high in extrema):
+                return True
+            return False
+    except ImportError:
+        pass
+    except Exception as e:
+        logger.debug("Could not inspect screenshot for blank frame %s: %s", screenshot_path, e)
+        return False
+    png_result = _is_blank_png_screenshot(screenshot_path, tolerance=tolerance)
+    if png_result is not None:
+        return png_result
+    return False
+
+
+def _is_blank_png_screenshot(screenshot_path, tolerance=2) -> Optional[bool]:
+    """Inspect a non-interlaced 8-bit PNG without optional imaging dependencies."""
+    import struct
+    import zlib
+
+    try:
+        raw = Path(screenshot_path).read_bytes()
+    except OSError:
+        return None
+    if not raw.startswith(b"\x89PNG\r\n\x1a\n"):
+        return None
+
+    offset = 8
+    width = height = bit_depth = color_type = interlace = None
+    idat = bytearray()
+    while offset + 8 <= len(raw):
+        length = struct.unpack(">I", raw[offset:offset + 4])[0]
+        chunk_type = raw[offset + 4:offset + 8]
+        chunk_data = raw[offset + 8:offset + 8 + length]
+        offset += 12 + length
+        if chunk_type == b"IHDR" and len(chunk_data) >= 13:
+            width, height, bit_depth, color_type, _compression, _filter, interlace = struct.unpack(
+                ">IIBBBBB", chunk_data[:13]
+            )
+        elif chunk_type == b"IDAT":
+            idat.extend(chunk_data)
+        elif chunk_type == b"IEND":
+            break
+
+    if not width or not height or bit_depth != 8 or interlace != 0:
+        return None
+    channels_by_type = {0: 1, 2: 3, 4: 2, 6: 4}
+    channels = channels_by_type.get(color_type)
+    if not channels:
+        return None
+
+    try:
+        decompressed = zlib.decompress(bytes(idat))
+    except zlib.error:
+        return None
+
+    row_len = width * channels
+    expected = height * (row_len + 1)
+    if len(decompressed) < expected:
+        return None
+
+    previous = bytearray(row_len)
+    minima = [255, 255, 255]
+    maxima = [0, 0, 0]
+    pos = 0
+    for _row in range(height):
+        filter_type = decompressed[pos]
+        pos += 1
+        scanline = bytearray(decompressed[pos:pos + row_len])
+        pos += row_len
+        _unfilter_png_scanline(scanline, previous, filter_type, channels)
+        for idx in range(0, row_len, channels):
+            if color_type == 0:
+                rgb = (scanline[idx], scanline[idx], scanline[idx])
+            else:
+                rgb = (scanline[idx], scanline[idx + 1], scanline[idx + 2])
+            for channel, value in enumerate(rgb):
+                if value < minima[channel]:
+                    minima[channel] = value
+                if value > maxima[channel]:
+                    maxima[channel] = value
+            if any(maxima[channel] - minima[channel] > tolerance for channel in range(3)):
+                return False
+        previous = scanline
+    return True
+
+
+def _unfilter_png_scanline(scanline, previous, filter_type, bytes_per_pixel) -> None:
+    if filter_type == 0:
+        return
+    for idx, value in enumerate(scanline):
+        left = scanline[idx - bytes_per_pixel] if idx >= bytes_per_pixel else 0
+        up = previous[idx]
+        up_left = previous[idx - bytes_per_pixel] if idx >= bytes_per_pixel else 0
+        if filter_type == 1:
+            predictor = left
+        elif filter_type == 2:
+            predictor = up
+        elif filter_type == 3:
+            predictor = (left + up) // 2
+        elif filter_type == 4:
+            predictor = _png_paeth(left, up, up_left)
+        else:
+            predictor = 0
+        scanline[idx] = (value + predictor) & 0xFF
+
+
+def _png_paeth(left, up, up_left):
+    estimate = left + up - up_left
+    left_distance = abs(estimate - left)
+    up_distance = abs(estimate - up)
+    up_left_distance = abs(estimate - up_left)
+    if left_distance <= up_distance and left_distance <= up_left_distance:
+        return left
+    if up_distance <= up_left_distance:
+        return up
+    return up_left
 
 
 def _cleanup_old_screenshots(screenshots_dir, max_age_hours=24):

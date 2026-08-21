@@ -1,0 +1,4 @@
+interface:
+  display_name: "Fuying Gongguan Weekly Deals"
+  short_description: "Weekly 富盈公馆 second-hand deal digest to Feishu."
+  default_prompt: "Use $fuying-gongguan-weekly-deals-feishu to schedule a Sunday 10:50 富盈公馆 second-hand transaction report to Feishu."

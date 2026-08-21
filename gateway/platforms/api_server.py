@@ -57,6 +57,52 @@ MAX_REQUEST_BYTES = 1_000_000  # 1 MB default limit for POST bodies
 CHAT_COMPLETIONS_SSE_KEEPALIVE_SECONDS = 30.0
 MAX_NORMALIZED_TEXT_LENGTH = 65_536  # 64 KB cap for normalized content parts
 MAX_CONTENT_LIST_SIZE = 1_000  # Max items when content is an array
+MAX_TRACE_VALUE_LENGTH = 60_000
+MAX_TRACE_COLLECTION_SIZE = 1_000
+TRACE_SENSITIVE_KEY_PARTS = (
+    "password",
+    "passwd",
+    "secret",
+    "api_key",
+    "apikey",
+    "cookie",
+    "credential",
+    "private_key",
+    "access_token",
+    "refresh_token",
+    "authorization",
+    "auth_token",
+)
+
+
+def _trace_safe_value(value: Any, *, _depth: int = 0) -> Any:
+    """Bound and recursively redact tool trace payloads before SSE delivery."""
+    if _depth > 8:
+        return "[max-depth]"
+    if isinstance(value, dict):
+        result: Dict[str, Any] = {}
+        for index, (key, item) in enumerate(value.items()):
+            if index >= MAX_TRACE_COLLECTION_SIZE:
+                result["[truncated]"] = f"{len(value) - index} more entries"
+                break
+            lowered = str(key).lower()
+            if any(token in lowered for token in TRACE_SENSITIVE_KEY_PARTS):
+                result[str(key)] = "[redacted]"
+            else:
+                result[str(key)] = _trace_safe_value(item, _depth=_depth + 1)
+        return result
+    if isinstance(value, (list, tuple)):
+        return [
+            _trace_safe_value(item, _depth=_depth + 1)
+            for item in value[:MAX_TRACE_COLLECTION_SIZE]
+        ]
+    if isinstance(value, str):
+        if len(value) > MAX_TRACE_VALUE_LENGTH:
+            return value[:MAX_TRACE_VALUE_LENGTH] + "\n[trace value truncated]"
+        return value
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    return _trace_safe_value(str(value), _depth=_depth + 1)
 
 
 def _normalize_chat_content(
@@ -517,6 +563,8 @@ class APIServerAdapter(BasePlatformAdapter):
         tool_progress_callback=None,
         tool_start_callback=None,
         tool_complete_callback=None,
+        model_override: Optional[str] = None,
+        provider_override: Optional[str] = None,
     ) -> Any:
         """
         Create an AIAgent instance using the gateway's runtime config.
@@ -530,8 +578,8 @@ class APIServerAdapter(BasePlatformAdapter):
         from gateway.run import _resolve_runtime_agent_kwargs, _resolve_gateway_model, _load_gateway_config
         from hermes_cli.tools_config import _get_platform_tools
 
-        runtime_kwargs = _resolve_runtime_agent_kwargs()
-        model = _resolve_gateway_model()
+        runtime_kwargs = _resolve_runtime_agent_kwargs(requested_provider=provider_override)
+        model = model_override or _resolve_gateway_model()
 
         user_config = _load_gateway_config()
         enabled_toolsets = sorted(_get_platform_tools(user_config, "api_server"))
@@ -2090,6 +2138,7 @@ class APIServerAdapter(BasePlatformAdapter):
                     "timestamp": ts,
                     "tool": tool_name,
                     "preview": preview,
+                    "arguments": _trace_safe_value(args),
                 })
             elif event_type == "tool.completed":
                 _push({
@@ -2099,6 +2148,8 @@ class APIServerAdapter(BasePlatformAdapter):
                     "tool": tool_name,
                     "duration": round(kwargs.get("duration", 0), 3),
                     "error": kwargs.get("is_error", False),
+                    "arguments": _trace_safe_value(args),
+                    "output": _trace_safe_value(kwargs.get("result")),
                 })
             elif event_type == "reasoning.available":
                 _push({
@@ -2161,6 +2212,8 @@ class APIServerAdapter(BasePlatformAdapter):
 
         instructions = body.get("instructions")
         previous_response_id = body.get("previous_response_id")
+        requested_model = str(body.get("model") or "").strip()
+        requested_provider = str(body.get("provider") or "").strip()
 
         # Accept explicit conversation_history from the request body.
         # Precedence: explicit conversation_history > previous_response_id.
@@ -2216,6 +2269,8 @@ class APIServerAdapter(BasePlatformAdapter):
                     session_id=session_id,
                     stream_delta_callback=_text_cb,
                     tool_progress_callback=event_cb,
+                    model_override=requested_model or None,
+                    provider_override=requested_provider or None,
                 )
                 def _run_sync():
                     r = agent.run_conversation(

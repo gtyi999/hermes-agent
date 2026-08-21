@@ -1,0 +1,4 @@
+interface:
+  display_name: "A-share Solid Battery Leaders"
+  short_description: "Daily solid-state battery leader stock quote digest."
+  default_prompt: "Set up a daily 22:50 Feishu report for five A-share solid-state battery concept leader stocks."

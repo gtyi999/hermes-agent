@@ -12,6 +12,7 @@ Tests cover:
 - Error handling (invalid JSON, missing fields)
 """
 
+import asyncio
 import json
 import time
 import uuid
@@ -227,6 +228,8 @@ def _create_app(adapter: APIServerAdapter) -> web.Application:
     app.router.add_post("/v1/responses", adapter._handle_responses)
     app.router.add_get("/v1/responses/{response_id}", adapter._handle_get_response)
     app.router.add_delete("/v1/responses/{response_id}", adapter._handle_delete_response)
+    app.router.add_post("/v1/runs", adapter._handle_runs)
+    app.router.add_get("/v1/runs/{run_id}/events", adapter._handle_run_events)
     return app
 
 
@@ -398,6 +401,76 @@ class TestModelsEndpoint:
                 headers={"Authorization": "Bearer sk-secret"},
             )
             assert resp.status == 200
+
+
+# ---------------------------------------------------------------------------
+# /v1/runs endpoint
+# ---------------------------------------------------------------------------
+
+
+class TestStructuredRunsEndpoint:
+    @pytest.mark.asyncio
+    async def test_tool_trace_payloads_include_redacted_arguments_and_output(self, adapter):
+        run_id = "run_trace_payload"
+        adapter._run_streams[run_id] = asyncio.Queue()
+        callback = adapter._make_run_event_callback(run_id, asyncio.get_running_loop())
+
+        callback(
+            "tool.started",
+            "web_search",
+            "AI news",
+            {
+                "query": "AI news",
+                "api_key": "secret-value",
+                "authorization": "Bearer secret-value",
+            },
+        )
+        callback(
+            "tool.completed",
+            "web_search",
+            "done",
+            {"query": "AI news", "password": "secret-value"},
+            duration=1.25,
+            is_error=False,
+            result="result text",
+        )
+        await asyncio.sleep(0)
+
+        started = await adapter._run_streams[run_id].get()
+        completed = await adapter._run_streams[run_id].get()
+        assert started["arguments"] == {
+            "query": "AI news",
+            "api_key": "[redacted]",
+            "authorization": "[redacted]",
+        }
+        assert completed["arguments"]["password"] == "[redacted]"
+        assert completed["output"] == "result text"
+
+    @pytest.mark.asyncio
+    async def test_model_and_provider_are_forwarded_to_agent_creation(self, adapter):
+        agent = MagicMock()
+        agent.run_conversation.return_value = {"final_response": "OK"}
+        app = _create_app(adapter)
+
+        async with TestClient(TestServer(app)) as cli:
+            with patch.object(adapter, "_create_agent", return_value=agent) as create_agent:
+                resp = await cli.post(
+                    "/v1/runs",
+                    json={
+                        "input": "hello",
+                        "model": "glm-4.5-air",
+                        "provider": "custom:coze-glm-4-5-air",
+                    },
+                )
+                assert resp.status == 202
+                run_id = (await resp.json())["run_id"]
+                events = await cli.get(f"/v1/runs/{run_id}/events")
+                assert events.status == 200
+                await events.read()
+
+            call_kwargs = create_agent.call_args.kwargs
+            assert call_kwargs["model_override"] == "glm-4.5-air"
+            assert call_kwargs["provider_override"] == "custom:coze-glm-4-5-air"
 
 
 # ---------------------------------------------------------------------------

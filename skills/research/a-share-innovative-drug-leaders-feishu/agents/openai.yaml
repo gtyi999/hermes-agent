@@ -1,0 +1,4 @@
+interface:
+  display_name: "A-share Innovative Drug Leaders"
+  short_description: "Daily innovative-drug leader stock quote digest."
+  default_prompt: "Set up a daily 23:18 Feishu report for five A-share innovative-drug concept leader stocks."

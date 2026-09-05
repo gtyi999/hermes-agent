@@ -1,0 +1,4 @@
+interface:
+  display_name: "WeChat Article to Markdown"
+  short_description: "Convert public WeChat articles into safe Markdown"
+  default_prompt: "Use $wechat-article-to-markdown to convert this public WeChat article link into Markdown."
